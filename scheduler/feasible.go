@@ -177,6 +177,62 @@ func (h *HostVolumeChecker) hasVolumes(n *structs.Node) bool {
 	return true
 }
 
+type CSIVolumeChecker struct {
+	ctx     Context
+	volumes map[string]*structs.VolumeRequest
+}
+
+func NewCSIVolumeChecker(ctx Context) *CSIVolumeChecker {
+	return &CSIVolumeChecker{
+		ctx: ctx,
+	}
+}
+
+func (c *CSIVolumeChecker) SetVolumes(volumes map[string]*structs.VolumeRequest) {
+	c.volumes = volumes
+}
+
+func (c *CSIVolumeChecker) Feasible(n *structs.Node) bool {
+	if c.hasPlugins(n) {
+		return true
+	}
+
+	c.ctx.Metrics().FilterNode(n, "missing compatible node plugins")
+	return false
+}
+
+func (c *CSIVolumeChecker) hasPlugins(n *structs.Node) bool {
+	// Have volume if
+	// - healthy controller plugin is running the driver
+	// - the volume has free claims
+	// - the node is running the node plugin (can we auto deploy?)
+	// - the node is in the right topology
+
+	rLen := len(c.volumes)
+	hLen := len(n.CSINodePlugins)
+
+	// Fast path: Requested no volumes. No need to check further.
+	if rLen == 0 {
+		return true
+	}
+
+	// Fast path: Requesting more volumes than the node has, can't meet the criteria.
+	if rLen > hLen {
+		return false
+	}
+
+	for _, req := range c.volumes {
+		plugin, ok := n.CSINodePlugins[req.Name]
+		if !(ok &&
+			plugin.Healthy &&
+			plugin.PluginID == req.Name) {
+			return false
+		}
+	}
+
+	return true
+}
+
 // DriverChecker is a FeasibilityChecker which returns whether a node has the
 // drivers necessary to scheduler a task group.
 type DriverChecker struct {
