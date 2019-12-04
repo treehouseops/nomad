@@ -34,6 +34,9 @@ func NewGenericStack(batch bool, ctx Context) *GenericStack {
 	// Filter on task group host volumes
 	s.taskGroupHostVolumes = NewHostVolumeChecker(ctx)
 
+	// Filter on available, healthy CSI plugins
+	s.taskGroupCSIVolumes = NewCSIVolumeChecker(ctx)
+
 	// Create the feasibility wrapper which wraps all feasibility checks in
 	// which feasibility checking can be skipped if the computed node class has
 	// previously been marked as eligible or ineligible. Generally this will be
