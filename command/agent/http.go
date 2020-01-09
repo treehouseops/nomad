@@ -41,9 +41,10 @@ var (
 
 	// allowCORS sets permissive CORS headers for a handler
 	allowCORS = cors.New(cors.Options{
-		AllowedOrigins: []string{"*"},
-		AllowedMethods: []string{"HEAD", "GET"},
-		AllowedHeaders: []string{"*"},
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"HEAD", "GET"},
+		AllowedHeaders:   []string{"*"},
+		AllowCredentials: true,
 	})
 )
 
@@ -304,6 +305,9 @@ func (s *HTTPServer) wrap(handler func(resp http.ResponseWriter, req *http.Reque
 			errMsg := err.Error()
 			if http, ok := err.(HTTPCodedError); ok {
 				code = http.Code()
+			} else if ecode, emsg, ok := structs.CodeFromRPCCodedErr(err); ok {
+				code = ecode
+				errMsg = emsg
 			} else {
 				// RPC errors get wrapped, so manually unwrap by only looking at their suffix
 				if strings.HasSuffix(errMsg, structs.ErrPermissionDenied.Error()) {
