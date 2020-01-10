@@ -49,11 +49,14 @@ NOMAD_SRC=/ops/shared/nomad
 NOMAD_DEST=/etc/nomad.d
 NOMAD_CONFIG_FILENAME=$(basename "$NOMAD_CONFIG")
 
-# download
-aws s3 cp "s3://nomad-team-test-binary/builds-oss/nomad_linux_amd64_${NOMAD_SHA}.tar.gz" nomad.tar.gz
+# download, unpack and install if the nomad sha has been set
+# (otherwise it's been installed by the provisioner)
+if [ ${NOMAD_SHA} != "" ]; then
+    aws s3 cp "s3://nomad-team-test-binary/builds-oss/nomad_linux_amd64_${NOMAD_SHA}.tar.gz" nomad.tar.gz
+    sudo tar -zxvf nomad.tar.gz -C /usr/local/bin/
+fi
 
-# unpack and install
-sudo tar -zxvf nomad.tar.gz -C /usr/local/bin/
+# assert Nomad binary's permissions
 sudo chmod 0755 /usr/local/bin/nomad
 sudo chown root:root /usr/local/bin/nomad
 
