@@ -276,6 +276,7 @@ func (s *SystemStack) Select(tg *structs.TaskGroup, options *SelectOptions) *Ran
 	s.taskGroupConstraint.SetConstraints(tgConstr.constraints)
 	s.taskGroupDevices.SetTaskGroup(tg)
 	s.taskGroupHostVolumes.SetVolumes(tg.Volumes)
+	s.taskGroupCSIVolumes.SetVolumes(tg.Volumes)
 	s.wrappedChecks.SetTaskGroup(tg.Name)
 	s.distinctPropertyConstraint.SetTaskGroup(tg)
 	s.binPack.SetTaskGroup(tg)
