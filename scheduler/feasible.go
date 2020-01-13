@@ -13,6 +13,13 @@ import (
 	psstructs "github.com/hashicorp/nomad/plugins/shared/structs"
 )
 
+const (
+	FilterConstraintHostVolumes = "missing compatible host volumes"
+	FilterConstraintCSIVolumes  = "missing csi volume plugins"
+	FilterConstraintDrivers     = "missing drivers"
+	FilterConstraintDevices     = "missing devices"
+)
+
 // FeasibleIterator is used to iteratively yield nodes that
 // match feasibility constraints. The iterators may manage
 // some state for performance optimizations.
@@ -135,7 +142,7 @@ func (h *HostVolumeChecker) Feasible(candidate *structs.Node) bool {
 		return true
 	}
 
-	h.ctx.Metrics().FilterNode(candidate, "missing compatible host volumes")
+	h.ctx.Metrics().FilterNode(candidate, FilterConstraintHostVolumes)
 	return false
 }
 
@@ -197,7 +204,7 @@ func (c *CSIVolumeChecker) Feasible(n *structs.Node) bool {
 		return true
 	}
 
-	c.ctx.Metrics().FilterNode(n, "missing compatible node plugins")
+	c.ctx.Metrics().FilterNode(n, FilterConstraintCSIVolumes)
 	return false
 }
 
@@ -257,7 +264,7 @@ func (c *DriverChecker) Feasible(option *structs.Node) bool {
 	if c.hasDrivers(option) {
 		return true
 	}
-	c.ctx.Metrics().FilterNode(option, "missing drivers")
+	c.ctx.Metrics().FilterNode(option, FilterConstraintDrivers)
 	return false
 }
 
@@ -976,7 +983,7 @@ func (c *DeviceChecker) Feasible(option *structs.Node) bool {
 		return true
 	}
 
-	c.ctx.Metrics().FilterNode(option, "missing devices")
+	c.ctx.Metrics().FilterNode(option, FilterConstraintDevices)
 	return false
 }
 
@@ -1267,4 +1274,19 @@ func newSemverConstraintParser(ctx Context) verConstraintParser {
 
 		return constraints
 	}
+}
+
+// filterConstraintsTransient is true if one filtered node was filtered by a transient
+// property of a node which depends on health in order to be true. This supports blocking
+// evaluations for those nodes to allow scheduling when the properties become healthy
+func filterConstraintsTransient(metrics *structs.AllocMetric) bool {
+	for k, len := range metrics.ConstraintFiltered {
+		switch k {
+		case FilterConstraintHostVolumes, FilterConstraintCSIVolumes, FilterConstraintDrivers, FilterConstraintDevices:
+			if len > 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
