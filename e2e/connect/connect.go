@@ -30,6 +30,15 @@ func init() {
 			new(ConnectClientStateE2ETest),
 		},
 	})
+
+	framework.AddSuites(&framework.TestSuite{
+		Component:   "ConnectACLs",
+		CanRunLocal: false,
+		Consul:      true,
+		Cases: []framework.TestCase{
+			new(ConnectACLsE2ETest),
+		},
+	})
 }
 
 func (tc *ConnectE2ETest) BeforeAll(f *framework.F) {
