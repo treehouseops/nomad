@@ -135,6 +135,7 @@ func ValidCSIVolumeWriteAccessMode(accessMode CSIVolumeAccessMode) bool {
 	}
 }
 
+// CSIVolume is the full representation of a CSI Volume
 type CSIVolume struct {
 	ID             string
 	Driver         string
@@ -150,45 +151,48 @@ type CSIVolume struct {
 
 	// Healthy is true if all the denormalized plugin health fields are true, and the
 	// volume has not been marked for garbage collection
-	Healthy           bool
-	VolumeGC          time.Time
-	ControllerName    string
-	ControllerHealthy bool
-	Controller        []*Job
-	NodeHealthy       int
-	NodeExpected      int
-	ResourceExhausted time.Time
+	Healthy            bool
+	VolumeGC           time.Time
+	PluginID           string
+	ControllerHealthy  int
+	ControllerExpected int
+	Controller         []*Job
+	NodeHealthy        int
+	NodeExpected       int
+	ResourceExhausted  time.Time
 
-	CreatedIndex  uint64
-	ModifiedIndex uint64
+	CreateIndex uint64
+	ModifyIndex uint64
 }
 
+// CSIVolListStub is partial representation of a CSI Volume for inclusion in lists
 type CSIVolListStub struct {
-	ID                string
-	Driver            string
-	Namespace         string
-	Topologies        []*CSITopology
-	AccessMode        CSIVolumeAccessMode
-	AttachmentMode    CSIVolumeAttachmentMode
-	CurrentReaders    int
-	CurrentWriters    int
-	Healthy           bool
-	VolumeGC          time.Time
-	ControllerName    string
-	ControllerHealthy bool
-	NodeHealthy       int
-	NodeExpected      int
-	CreatedIndex      uint64
-	ModifiedIndex     uint64
+	ID                 string
+	Driver             string
+	Namespace          string
+	Topologies         []*CSITopology
+	AccessMode         CSIVolumeAccessMode
+	AttachmentMode     CSIVolumeAttachmentMode
+	CurrentReaders     int
+	CurrentWriters     int
+	Healthy            bool
+	VolumeGC           time.Time
+	ControllerName     string
+	ControllerHealthy  int
+	ControllerExpected int
+	NodeHealthy        int
+	NodeExpected       int
+	CreateIndex        uint64
+	ModifyIndex        uint64
 }
 
 func CreateCSIVolume(controllerName string) *CSIVolume {
 	return &CSIVolume{
-		ControllerName: controllerName,
-		ReadAllocs:     map[string]*Allocation{},
-		WriteAllocs:    map[string]*Allocation{},
-		PastAllocs:     map[string]*Allocation{},
-		Topologies:     []*CSITopology{},
+		PluginID:    controllerName,
+		ReadAllocs:  map[string]*Allocation{},
+		WriteAllocs: map[string]*Allocation{},
+		PastAllocs:  map[string]*Allocation{},
+		Topologies:  []*CSITopology{},
 	}
 }
 
@@ -204,12 +208,12 @@ func (v *CSIVolume) Stub() *CSIVolListStub {
 		CurrentWriters:    len(v.WriteAllocs),
 		Healthy:           v.Healthy,
 		VolumeGC:          v.VolumeGC,
-		ControllerName:    v.ControllerName,
+		ControllerName:    v.PluginID,
 		ControllerHealthy: v.ControllerHealthy,
 		NodeHealthy:       v.NodeHealthy,
 		NodeExpected:      v.NodeExpected,
-		CreatedIndex:      v.CreatedIndex,
-		ModifiedIndex:     v.ModifiedIndex,
+		CreateIndex:       v.CreateIndex,
+		ModifyIndex:       v.ModifyIndex,
 	}
 
 	return &stub
@@ -296,7 +300,7 @@ func (v *CSIVolume) Equal(o *CSIVolume) bool {
 		v.Namespace == o.Namespace &&
 		v.AccessMode == o.AccessMode &&
 		v.AttachmentMode == o.AttachmentMode &&
-		v.ControllerName == o.ControllerName {
+		v.PluginID == o.PluginID {
 		// Setwise equality of topologies
 		var ok bool
 		for _, t := range v.Topologies {
@@ -404,5 +408,143 @@ type CSIVolumeGetRequest struct {
 
 type CSIVolumeGetResponse struct {
 	Volume *CSIVolume
+	QueryMeta
+}
+
+// CSIPlugin bundles job and info context for the plugin for clients
+type CSIPlugin struct {
+	ID        string
+	Type      CSIPluginType
+	Namespace string // FIXME all jobs in the same namespace?
+	Jobs      map[string]map[string]*Job
+
+	ControllerHealthy int
+	Controllers       map[string]*CSIInfo
+	NodeHealthy       int
+	Nodes             map[string]*CSIInfo
+
+	CreateIndex uint64
+	ModifyIndex uint64
+}
+
+func NewCSIPlugin(id, driver string, index uint64) *CSIPlugin {
+	return &CSIPlugin{
+		ID:          id,
+		Driver:      driver,
+		Jobs:        map[string]map[string]*Job{},
+		Controllers: map[string]*CSIInfo{},
+		Nodes:       map[string]*CSIInfo{},
+		CreateIndex: index,
+		ModifyIndex: index,
+	}
+}
+
+func (p *CSIPlugin) AddPlugin(nodeID string, info *CSIInfo, index uint64) {
+	if info.ControllerInfo != nil {
+		prev, ok := p.Controllers[nodeID]
+		if ok && prev.Healthy {
+			p.ControllerHealthy -= 1
+		}
+		p.Controllers[nodeID] = info
+		if info.Healthy {
+			p.ControllerHealthy += 1
+		}
+	}
+
+	if info.NodeInfo != nil {
+		prev, ok := p.Nodes[nodeID]
+		if ok && prev.Healthy {
+			p.NodeHealthy -= 1
+		}
+		p.Nodes[nodeID] = info
+		if info.Healthy {
+			p.NodeHealthy += 1
+		}
+	}
+
+	p.ModifyIndex = index
+}
+
+func (p *CSIPlugin) DeletePlugins(nodeID string, index uint64) {
+	prev, ok := p.Controllers[nodeID]
+	if ok && prev.Healthy {
+		p.ControllerHealthy -= 1
+	}
+	delete(p.Controllers, nodeID)
+
+	prev, ok = p.Nodes[nodeID]
+	if ok && prev.Healthy {
+		p.NodeHealthy -= 1
+	}
+	delete(p.Nodes, nodeID)
+
+	p.ModifyIndex = index
+}
+
+type CSIPluginListStub struct {
+	ID                 string
+	Type               CSIPluginType
+	JobIDs             map[string]map[string]struct{}
+	ControllerHealthy  int
+	ControllerExpected int
+	NodeHealthy        int
+	NodeExpected       int
+	CreateIndex        uint64
+	ModifyIndex        uint64
+}
+
+func (p *CSIPlugin) Stub() *CSIPluginListStub {
+	ids := map[string]map[string]struct{}{}
+	for ns, js := range p.Jobs {
+		ids[ns] = map[string]struct{}{}
+		for id := range js {
+			ids[ns][id] = struct{}{}
+		}
+	}
+
+	return &CSIPluginListStub{
+		ID:                 p.ID,
+		Type:               p.Type,
+		JobIDs:             ids,
+		ControllerHealthy:  p.ControllerHealthy,
+		ControllerExpected: len(p.Controllers),
+		NodeHealthy:        p.NodeHealthy,
+		NodeExpected:       len(p.Nodes),
+		CreateIndex:        p.CreateIndex,
+		ModifyIndex:        p.ModifyIndex,
+	}
+}
+
+func (p *CSIPlugin) IsEmpty() bool {
+	if !(len(p.Controllers) == 0 && len(p.Nodes) == 0) {
+		return false
+	}
+
+	empty := true
+	for _, m := range p.Jobs {
+		if len(m) > 0 {
+			empty = false
+		}
+	}
+	return empty
+}
+
+type CSIPluginListRequest struct {
+	Driver string
+	QueryOptions
+}
+
+type CSIPluginListResponse struct {
+	Plugins []*CSIPluginListStub
+	QueryMeta
+}
+
+type CSIPluginGetRequest struct {
+	ID string
+	QueryOptions
+}
+
+type CSIPluginGetResponse struct {
+	Plugin *CSIPlugin
 	QueryMeta
 }
