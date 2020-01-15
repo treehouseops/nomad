@@ -57,7 +57,7 @@ echo "=== CONFIGS ==="
 # Upload acl.hcl to each Consul Server agent's configuration directory
 for server in ${servers}; do
   echo "-> upload to ${server}"
-  scp -o StrictHostKeyChecking=no -i "${pemfile}" consulacl/acl.hcl "${user}@${server}:/tmp/acl.hcl"
+  scp -o StrictHostKeyChecking=no -i "${pemfile}" consulacls/acl.hcl "${user}@${server}:/tmp/acl.hcl"
   doSSH "${server}" "sudo mv /tmp/acl.hcl ${confdir}/acl.hcl"
 done
 
@@ -85,7 +85,7 @@ echo "  consul root: ${CONSUL_HTTP_TOKEN}"
 
 # Create Server Policy & Server agent tokens
 echo "-> configure server policy"
-consul acl policy create -name server-policy -rules @consulacl/server-policy.hcl
+consul acl policy create -name server-policy -rules @consulacls/server-policy.hcl
 
 # Create & Set agent token for each Consul Server
 for server in ${servers}; do
@@ -100,7 +100,7 @@ done
 echo "-> sleep 10s"
 
 # Create Client Policy & Client agent tokens
-consul acl policy create -name client-policy -rules @consulacl/client-policy.hcl
+consul acl policy create -name client-policy -rules @consulacls/client-policy.hcl
 
 # Create & Set agent token for each Consul Client (including windows)
 for client in ${clients}; do
@@ -114,5 +114,5 @@ done
 echo "=== DONE ==="
 echo ""
 echo "for running tests ..."
-echo "set CONSUL_HTTP_ADDR=${CONSUL_HTTP_ADDR}"
-echo "set CONSUL_HTTP_TOKEN=${CONSUL_HTTP_TOKEN}"
+echo "export CONSUL_HTTP_ADDR=${CONSUL_HTTP_ADDR}"
+echo "export CONSUL_HTTP_TOKEN=${CONSUL_HTTP_TOKEN}"
