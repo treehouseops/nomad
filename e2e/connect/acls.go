@@ -191,7 +191,7 @@ func (tc *ConnectACLsE2ETest) TestConnectACLsRegister_FakeOperatorToken(f *frame
 
 	policyID := tc.createConsulPolicy(consulPolicy{
 		Name:  "nomad-operator-policy",
-		Rules: `service "count-api" { policy = "write" }`,
+		Rules: `service "count-api" { policy = "write" } service "count-dashboard" { policy = "write" }`,
 	}, f)
 	t.Log("created operator policy:", policyID)
 
@@ -221,7 +221,7 @@ func (tc *ConnectACLsE2ETest) TestConnectACLsRegister_RealOperatorToken(f *frame
 
 	policyID := tc.createConsulPolicy(consulPolicy{
 		Name:  "nomad-operator-policy",
-		Rules: `service "count-api" { policy = "write" }`,
+		Rules: `service "count-api" { policy = "write" } service "count-dashboard" { policy = "write" }`,
 	}, f)
 	t.Log("created operator policy:", policyID)
 

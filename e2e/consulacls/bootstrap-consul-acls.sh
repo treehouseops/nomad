@@ -157,7 +157,7 @@ cp consulacls/nomad-client-consul.hcl "${nomad_client_consul_token_tmp}"
 sed -i "s/CONSUL_TOKEN/${nomad_client_consul_token}/g" "${nomad_client_consul_token_tmp}"
 for linux_client in ${linux_clients}; do
   echo "---> upload nomad-client-token.hcl to ${linux_client}"
-  doSCP "consulacls/nomad-client-consul.hcl" "${user}" "${linux_client}" "/tmp/nomad-client-consul.hcl"
+  doSCP "${nomad_client_consul_token_tmp}" "${user}" "${linux_client}" "/tmp/nomad-client-consul.hcl"
   doSSH "${linux_client}" "sudo mv /tmp/nomad-client-consul.hcl ${nomad_configs}/nomad-client-consul.hcl"
 done
 
