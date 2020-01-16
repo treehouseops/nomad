@@ -10,7 +10,7 @@ type CSIVolumes struct {
 	client *Client
 }
 
-// CSIVolumes returns a handle on the allocs endpoints.
+// CSIVolumes returns a handle on the CSIVolumes endpoint
 func (c *Client) CSIVolumes() *CSIVolumes {
 	return &CSIVolumes{client: c}
 }
@@ -31,7 +31,7 @@ func (v *CSIVolumes) DriverList(driver string) ([]*CSIVolumeListStub, *QueryMeta
 	return v.List(&QueryOptions{Prefix: driver})
 }
 
-// Info is used to retrieve a single allocation.
+// Info is used to retrieve a single CSIVolume
 func (v *CSIVolumes) Info(id string, q *QueryOptions) (*CSIVolume, *QueryMeta, error) {
 	var resp CSIVolume
 	qm, err := v.client.query("/v1/csi/volume/"+id, &resp, q)
@@ -92,16 +92,17 @@ type CSIVolume struct {
 
 	// Healthy is true iff all the denormalized plugin health fields are true, and the
 	// volume has not been marked for garbage collection
-	Healthy           bool
-	VolumeGC          time.Time
-	ControllerName    string
-	ControllerHealthy bool
-	NodeHealthy       int
-	NodeExpected      int
-	ResourceExhausted time.Time
+	Healthy            bool
+	VolumeGC           time.Time
+	ControllerName     string
+	ControllerHealthy  int
+	ControllerExpected int
+	NodeHealthy        int
+	NodeExpected       int
+	ResourceExhausted  time.Time
 
-	CreatedIndex  uint64
-	ModifiedIndex uint64
+	CreateIndex uint64
+	ModifyIndex uint64
 }
 
 type CSIVolumeIndexSort []*CSIVolumeListStub
@@ -111,7 +112,7 @@ func (v CSIVolumeIndexSort) Len() int {
 }
 
 func (v CSIVolumeIndexSort) Less(i, j int) bool {
-	return v[i].CreatedIndex > v[j].CreatedIndex
+	return v[i].CreateIndex > v[j].CreateIndex
 }
 
 func (v CSIVolumeIndexSort) Swap(i, j int) {
@@ -129,16 +130,17 @@ type CSIVolumeListStub struct {
 
 	// Healthy is true iff all the denormalized plugin health fields are true, and the
 	// volume has not been marked for garbage collection
-	Healthy           bool
-	VolumeGC          time.Time
-	ControllerName    string
-	ControllerHealthy bool
-	NodeHealthy       int
-	NodeExpected      int
-	ResourceExhausted time.Time
+	Healthy            bool
+	VolumeGC           time.Time
+	ControllerName     string
+	ControllerHealthy  int
+	ControllerExpected int
+	NodeHealthy        int
+	NodeExpected       int
+	ResourceExhausted  time.Time
 
-	CreatedIndex  uint64
-	ModifiedIndex uint64
+	CreateIndex uint64
+	ModifyIndex uint64
 }
 
 type CSIVolumeRegisterRequest struct {
@@ -149,4 +151,82 @@ type CSIVolumeRegisterRequest struct {
 type CSIVolumeDeregisterRequest struct {
 	VolumeIDs []string
 	WriteRequest
+}
+
+// CSI Plugins are jobs with plugin specific data
+type CSIPlugins struct {
+	client *Client
+}
+
+type CSIPlugin struct {
+	ID        string
+	Driver    string
+	Type      CSIPluginType
+	Namespace string // FIXME all jobs in the same namespace?
+	Jobs      map[string]map[string]*Job
+
+	ControllerHealthy int
+	Controllers       map[string]*CSIInfo
+	NodeHealthy       int
+	Nodes             map[string]*CSIInfo
+
+	CreateIndex uint64
+	ModifyIndex uint64
+}
+
+type CSIPluginListStub struct {
+	ID                 string
+	Type               CSIPluginType
+	JobIDs             map[string]map[string]struct{}
+	ControllerHealthy  int
+	ControllerExpected int
+	NodeHealthy        int
+	NodeExpected       int
+	CreateIndex        uint64
+	ModifyIndex        uint64
+}
+
+type CSIPluginIndexSort []*CSIPluginListStub
+
+func (v CSIPluginIndexSort) Len() int {
+	return len(v)
+}
+
+func (v CSIPluginIndexSort) Less(i, j int) bool {
+	return v[i].CreateIndex > v[j].CreateIndex
+}
+
+func (v CSIPluginIndexSort) Swap(i, j int) {
+	v[i], v[j] = v[j], v[i]
+}
+
+// CSIPlugins returns a handle on the CSIPlugins endpoint
+func (c *Client) CSIPlugins() *CSIPlugins {
+	return &CSIPlugins{client: c}
+}
+
+// List returns all CSI plugins
+func (v *CSIPlugins) List(q *QueryOptions) ([]*CSIPluginListStub, *QueryMeta, error) {
+	var resp []*CSIPluginListStub
+	qm, err := v.client.query("/v1/csi/plugins", &resp, q)
+	if err != nil {
+		return nil, nil, err
+	}
+	sort.Sort(CSIPluginIndexSort(resp))
+	return resp, qm, nil
+}
+
+// NameList returns all CSI plugins by driver
+func (v *CSIPlugins) DriverList(driver string) ([]*CSIPluginListStub, *QueryMeta, error) {
+	return v.List(&QueryOptions{Prefix: driver})
+}
+
+// Info is used to retrieve a single CSI Plugin Job
+func (v *CSIPlugins) Info(id string, q *QueryOptions) (*CSIPlugin, *QueryMeta, error) {
+	var resp *CSIPlugin
+	qm, err := v.client.query("/v1/csi/plugin/"+id, &resp, q)
+	if err != nil {
+		return nil, nil, err
+	}
+	return resp, qm, nil
 }
