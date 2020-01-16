@@ -31,7 +31,8 @@ server0=$(echo "${servers}" | cut -d' ' -f1)
 pemfile="terraform/$(jq -r '.resources[] | select(.name=="private_key_pem") | .instances[0].attributes.filename' < "terraform/terraform.tfstate")"
 
 # See AWS service file
-confdir="${confdir:-/etc/consul.d}"
+consul_configs="/etc/consul.d"
+nomad_configs="/etc/nomad.d"
 
 # Not really present in the config
 user=ubuntu
@@ -41,7 +42,8 @@ echo "SETUP servers: ${servers}"
 echo "SETUP linux clients: ${linux_clients}"
 echo "SETUP windows clients: ${windows_clients}"
 echo "SETUP pem file: ${pemfile}"
-echo "SETUP consul configs: ${confdir}"
+echo "SETUP consul configs: ${consul_configs}"
+echo "SETUP nomad configs: ${nomad_configs}"
 echo "SETUP aws user: ${user}"
 echo "SETUP bootstrap server: ${server0}"
 
@@ -52,18 +54,18 @@ function doSSH {
   ssh -o StrictHostKeyChecking=no -i "${pemfile}" "${user}@${server}" "${command}"
 }
 
-echo "=== CONFIGS ==="
+echo "=== Consul Configs ==="
 
 # Upload acl.hcl to each Consul Server agent's configuration directory
 for server in ${servers}; do
-  echo "-> upload to ${server}"
+  echo "-> upload acl.hcl to ${server}"
   scp -o StrictHostKeyChecking=no -i "${pemfile}" consulacls/acl.hcl "${user}@${server}:/tmp/acl.hcl"
-  doSSH "${server}" "sudo mv /tmp/acl.hcl ${confdir}/acl.hcl"
+  doSSH "${server}" "sudo mv /tmp/acl.hcl ${consul_configs}/acl.hcl"
 done
 
-# Restart each Consul Server agent
+# Restart each Consul Server agent to pickup the new config
 for server in ${servers}; do
-  echo "-> restart ${server} ..."
+  echo "-> restart Consul on ${server} ..."
   doSSH "${server}" "sudo systemctl restart consul"
 done
 
@@ -72,7 +74,7 @@ done
 echo "-> sleep 20s ..."
 sleep 20
 
-echo "=== ACL Bootstrap ==="
+echo "=== Consul ACL Bootstrap ==="
 
 # Bootstrap Consul ACLs on server[0]
 echo "-> bootstrap ACL using ${server0}"
@@ -110,6 +112,28 @@ for client in ${clients}; do
   consul acl set-agent-token agent "${client_agent_token}"
   echo "---> done setting agent token for client ${client}"
 done
+
+
+echo "=== Nomad Configs ==="
+
+# Upload au.hcl to each Nomad Server agent's configuration directory. This will
+# reconfigure nomad to set consul.allow_unauthenticated = false, making Nomad
+# Server enforce the authenticity of generated Consul Opeartor Tokens in our tests.
+for server in ${servers}; do
+  echo "-> upload au.hcl to ${server}"
+  scp -o StrictHostKeyChecking=no -i "${pemfile}" consulacls/au.hcl "${user}@${server}:/tmp/au.hcl"
+  doSSH "${server}" "sudo mv /tmp/au.hcl ${nomad_configs}/au.hcl"
+done
+
+# Restart each Nomad Server agent to pickup the new config
+for server in ${servers}; do
+  echo "-> restart Nomad on ${server} ..."
+  doSSH "${server}" "sudo systemctl restart nomad"
+done
+
+# Wait 20s before moving on, giving Nomad Server time to do leader election
+# and settle down.
+sleep 20
 
 echo "=== DONE ==="
 echo ""

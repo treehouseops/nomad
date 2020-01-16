@@ -119,10 +119,11 @@ func (tc *ConnectACLsE2ETest) TestConnectACLsRegisterOperatorToken(f *framework.
 
 	rootToken := os.Getenv("CONSUL_HTTP_TOKEN")
 	defer func() {
+		t.Log("restore root token:", rootToken)
 		_ = os.Setenv("CONSUL_HTTP_TOKEN", rootToken)
 	}()
 
-	t.Log("root token:", rootToken)
+	_ = os.Setenv("CONSUL_HTTP_TOKEN", "")
 
 	t.Log("test register Connect job w/ ACLs enabled w/ operator token")
 
@@ -145,8 +146,13 @@ func (tc *ConnectACLsE2ETest) TestConnectACLsRegisterOperatorToken(f *framework.
 	jobAPI := tc.Nomad().Jobs()
 
 	// todo: need to set consul token on the job
-	// YOU ARE HERE
+	job.ConsulToken = &badID
+
+	// allow unauthenticated is not set to false, should be!
+	// also, this should fail if they provide a token but is not enforced
 
 	resp, _, err := jobAPI.Register(job, nil)
 	r.Error(err)
+
+	t.Log("warnings:", resp.Warnings)
 }
