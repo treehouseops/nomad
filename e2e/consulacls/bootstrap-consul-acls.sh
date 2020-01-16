@@ -48,10 +48,27 @@ echo "SETUP aws user: ${user}"
 echo "SETUP bootstrap server: ${server0}"
 
 function doSSH {
-  server="$1"
+  hostname="$1"
   command="$2"
-  echo "  will run command '${command}' on ${server}"
-  ssh -o StrictHostKeyChecking=no -i "${pemfile}" "${user}@${server}" "${command}"
+  echo "-----> will ssh command '${command}' on ${hostname}"
+  ssh \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -i "${pemfile}" \
+    "${user}@${hostname}" "${command}"
+}
+
+function doSCP {
+  original="$1"
+  username="$2"
+  hostname="$3"
+  destination="$4"
+  echo "------> will scp ${original} to ${hostname}"
+  scp \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -i "${pemfile}" \
+    "${original}" "${username}@${hostname}:${destination}"
 }
 
 echo "=== Consul Configs ==="
@@ -59,7 +76,7 @@ echo "=== Consul Configs ==="
 # Upload acl.hcl to each Consul Server agent's configuration directory
 for server in ${servers}; do
   echo "-> upload acl.hcl to ${server}"
-  scp -o StrictHostKeyChecking=no -i "${pemfile}" consulacls/acl.hcl "${user}@${server}:/tmp/acl.hcl"
+  doSCP "consulacls/acl.hcl" "${user}" "${server}" "/tmp/acl.hcl"
   doSSH "${server}" "sudo mv /tmp/acl.hcl ${consul_configs}/acl.hcl"
 done
 
@@ -85,9 +102,9 @@ export CONSUL_HTTP_ADDR=${consul_http_addr}
 echo "  consul http: ${CONSUL_HTTP_ADDR}"
 echo "  consul root: ${CONSUL_HTTP_TOKEN}"
 
-# Create Server Policy & Server agent tokens
-echo "-> configure server policy"
-consul acl policy create -name server-policy -rules @consulacls/server-policy.hcl
+# Create Consul Server Policy & Consul Server agent tokens
+echo "-> configure consul server policy"
+consul acl policy create -name server-policy -rules @consulacls/consul-server-policy.hcl
 
 # Create & Set agent token for each Consul Server
 for server in ${servers}; do
@@ -98,45 +115,85 @@ for server in ${servers}; do
   echo "---> done setting agent token for server ${server}"
 done
 
-# Wait 10s before continuing with linux_clients.
+# Wait 10s before continuing with configuring consul clients.
 echo "-> sleep 10s"
+sleep 10
 
-# Create Client Policy & Client agent tokens
-consul acl policy create -name client-policy -rules @consulacls/client-policy.hcl
+# Create Consul Client Policy & Client agent tokens
+echo "-> configure consul client policy"
+consul acl policy create -name client-policy -rules @consulacls/consul-client-policy.hcl
 
 # Create & Set agent token for each Consul Client (including windows)
 for client in ${clients}; do
-  echo "---> will create agent token for client ${client}"
+  echo "---> will create consul agent token for client ${client}"
   client_agent_token=$(consul acl token create -description "consul client agent token" -policy-name client-policy | grep SecretID | awk '{print $2}')
-  echo "---> setting token for client agent: ${client} -> ${client_agent_token}"
+  echo "---> setting consul token for consul client ${client} -> ${client_agent_token}"
   consul acl set-agent-token agent "${client_agent_token}"
-  echo "---> done setting agent token for client ${client}"
+  echo "---> done setting consul agent token for client ${client}"
 done
 
 
 echo "=== Nomad Configs ==="
 
-# Upload au.hcl to each Nomad Server agent's configuration directory. This will
-# reconfigure nomad to set consul.allow_unauthenticated = false, making Nomad
-# Server enforce the authenticity of generated Consul Opeartor Tokens in our tests.
+# Create Nomad Server consul Policy and Nomad Server consul tokens
+echo "-> configure nomad server policy & consul token"
+consul acl policy create -name nomad-server-policy -rules @consulacls/nomad-server-policy.hcl
+nomad_server_consul_token=$(consul acl token create -description "nomad server consul token" -policy-name nomad-server-policy | grep SecretID | awk '{print $2}')
+nomad_server_consul_token_tmp=$(mktemp)
+cp consulacls/nomad-server-consul.hcl "${nomad_server_consul_token_tmp}"
+sed -i "s/CONSUL_TOKEN/${nomad_server_consul_token}/g" "${nomad_server_consul_token_tmp}"
 for server in ${servers}; do
-  echo "-> upload au.hcl to ${server}"
-  scp -o StrictHostKeyChecking=no -i "${pemfile}" consulacls/au.hcl "${user}@${server}:/tmp/au.hcl"
-  doSSH "${server}" "sudo mv /tmp/au.hcl ${nomad_configs}/au.hcl"
+  echo "---> upload nomad-server-consul.hcl to ${server}"
+  doSCP "${nomad_server_consul_token_tmp}" "${user}" "${server}" "/tmp/nomad-server-consul.hcl"
+  doSSH "${server}" "sudo mv /tmp/nomad-server-consul.hcl ${nomad_configs}/nomad-server-consul.hcl"
 done
+
+# Create Nomad Client consul Policy and Nomad Client consul token
+echo "-> configure nomad client policy & consul token"
+consul acl policy create -name nomad-client-policy -rules @consulacls/nomad-client-policy.hcl
+nomad_client_consul_token=$(consul acl token create -description "nomad client consul token" -policy-name nomad-client-policy | grep SecretID | awk '{print $2}')
+nomad_client_consul_token_tmp=$(mktemp)
+cp consulacls/nomad-client-consul.hcl "${nomad_client_consul_token_tmp}"
+sed -i "s/CONSUL_TOKEN/${nomad_client_consul_token}/g" "${nomad_client_consul_token_tmp}"
+for linux_client in ${linux_clients}; do
+  echo "---> upload nomad-client-token.hcl to ${linux_client}"
+  doSCP "consulacls/nomad-client-consul.hcl" "${user}" "${linux_client}" "/tmp/nomad-client-consul.hcl"
+  doSSH "${linux_client}" "sudo mv /tmp/nomad-client-consul.hcl ${nomad_configs}/nomad-client-consul.hcl"
+done
+
+# TODO: only apply Nomad Client changes to Linux nodes for now. Should add
+# TODO: PS scripts to apply changes to Windows nodes as well.
 
 # Restart each Nomad Server agent to pickup the new config
 for server in ${servers}; do
-  echo "-> restart Nomad on ${server} ..."
+  echo "-> restart Nomad Server on ${server} ..."
   doSSH "${server}" "sudo systemctl restart nomad"
 done
 
-# Wait 20s before moving on, giving Nomad Server time to do leader election
-# and settle down.
-sleep 20
+# Give the Nomad servers a few seconds to start back up.
+echo "-> sleep 5s for Nomad Servers ..."
+sleep 5
+
+# Restart each Nomad Client agent to pickup the new config
+for linux_client in ${linux_clients}; do
+  echo "-> restart Nomad Client on ${linux_client} ..."
+  doSSH "${linux_client}" "sudo systemctl restart nomad"
+done
+
+
+
+# Give the Nomad Clients a few seconds to start back up.
+echo "-> sleep 5s for Nomad Clients ..."
+sleep 5
+
+export NOMAD_ADDR="http://${server0}:4646"
 
 echo "=== DONE ==="
 echo ""
 echo "for running tests ..."
 echo "export CONSUL_HTTP_ADDR=${CONSUL_HTTP_ADDR}"
 echo "export CONSUL_HTTP_TOKEN=${CONSUL_HTTP_TOKEN}"
+echo "export NOMAD_ADDR=${NOMAD_ADDR}"
+echo "export NOMAD_TEST_CONSUL_ACLS=1"
+echo "export NOMAD_E2E=1"
+echo "... and then run 'go test -v' in e2e/"

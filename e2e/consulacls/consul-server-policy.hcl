@@ -1,3 +1,5 @@
+acl = "write"
+
 agent "" {
   policy = "write"
 }
