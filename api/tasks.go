@@ -909,6 +909,9 @@ type TaskCSIPluginConfig struct {
 	// Ideally this should be the FQDN of the plugin.
 	ID string `mapstructure:"id"`
 
+	// Driver is a CSI property describing the provider service
+	Driver string `mapstructure:"driver"`
+
 	// CSIPluginType instructs Nomad on how to handle processing a plugin
 	Type CSIPluginType `mapstructure:"type"`
 
