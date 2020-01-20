@@ -1674,15 +1674,16 @@ func TestTask_Validate_CSIPluginConfig(t *testing.T) {
 		{
 			name:        "requires non-empty plugin id",
 			pc:          &TaskCSIPluginConfig{},
-			expectedErr: "CSIPluginConfig must have a non-empty PluginID",
+			expectedErr: "CSIPluginConfig: ID must be non-empty",
 		},
 		{
 			name: "requires valid plugin type",
 			pc: &TaskCSIPluginConfig{
-				ID:   "com.hashicorp.csi",
-				Type: "nonsense",
+				ID:     "com.hashicorp.csi",
+				Driver: "some",
+				Type:   "nonsense",
 			},
-			expectedErr: "CSIPluginConfig PluginType must be one of 'node', 'controller', or 'monolith', got: \"nonsense\"",
+			expectedErr: "CSIPluginConfig: Type must be one of 'node', 'controller', or 'monolith', got: \"nonsense\"",
 		},
 	}
 

@@ -55,6 +55,9 @@ type TaskCSIPluginConfig struct {
 	// Ideally this should be the FQDN of the plugin.
 	ID string
 
+	// Driver is a CSI property describing the provider service
+	Driver string
+
 	// Type instructs Nomad on how to handle processing a plugin
 	Type CSIPluginType
 
@@ -74,6 +77,27 @@ func (t *TaskCSIPluginConfig) Copy() *TaskCSIPluginConfig {
 	*nt = *t
 
 	return nt
+}
+
+func (t *TaskCSIPluginConfig) Validate() error {
+	if t.ID == "" {
+		return fmt.Errorf("ID must be non-empty")
+	}
+
+	if t.Driver == "" {
+		return fmt.Errorf("Driver must be non-empty")
+	}
+
+	if !CSIPluginTypeIsValid(t.Type) {
+		return fmt.Errorf("Type must be one of 'node', 'controller', or 'monolith', got: \"%s\"", t.Type)
+	}
+
+	// TODO: Investigate validation of the PluginMountDir. Not much we can do apart from check IsAbs until after we understand its execution environment though :(
+	if t.MountDir == "" {
+		return fmt.Errorf("MountDir must be non-empty")
+	}
+
+	return nil
 }
 
 // CSIVolumeAttachmentMode chooses the type of storage api that will be used to
@@ -414,6 +438,7 @@ type CSIVolumeGetResponse struct {
 // CSIPlugin bundles job and info context for the plugin for clients
 type CSIPlugin struct {
 	ID        string
+	Driver    string
 	Type      CSIPluginType
 	Namespace string // FIXME all jobs in the same namespace?
 	Jobs      map[string]map[string]*Job
