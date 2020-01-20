@@ -2830,8 +2830,10 @@ func TestStateStore_RestoreJobSummary(t *testing.T) {
 func TestStateStore_CSIVolume(t *testing.T) {
 	state := testStateStore(t)
 
+	id0, id1 := uuid.Generate(), uuid.Generate()
+
 	v0 := structs.CreateCSIVolume("foo")
-	v0.ID = "DEADBEEF-70AD-4672-9178-802BCA500C87"
+	v0.ID = id0
 	v0.Namespace = "default"
 	v0.Driver = "minnie"
 	v0.Healthy = true
@@ -2839,7 +2841,7 @@ func TestStateStore_CSIVolume(t *testing.T) {
 	v0.AttachmentMode = structs.CSIVolumeAttachmentModeFilesystem
 
 	v1 := structs.CreateCSIVolume("foo")
-	v1.ID = "BAADF00D-70AD-4672-9178-802BCA500C87"
+	v1.ID = id1
 	v1.Namespace = "default"
 	v1.Driver = "adam"
 	v1.Healthy = true
@@ -2875,7 +2877,7 @@ func TestStateStore_CSIVolume(t *testing.T) {
 	require.Equal(t, 1, len(vs))
 
 	err = state.CSIVolumeDeregister(1, []string{
-		"BAADF00D-70AD-4672-9178-802BCA500C87",
+		id1,
 	})
 	require.NoError(t, err)
 
@@ -2898,9 +2900,9 @@ func TestStateStore_CSIVolume(t *testing.T) {
 	w := structs.CSIVolumeClaimWrite
 	u := structs.CSIVolumeClaimRelease
 
-	err = state.CSIVolumeClaim(2, "DEADBEEF-70AD-4672-9178-802BCA500C87", a0, r)
+	err = state.CSIVolumeClaim(2, id0, a0, r)
 	require.NoError(t, err)
-	err = state.CSIVolumeClaim(2, "DEADBEEF-70AD-4672-9178-802BCA500C87", a1, w)
+	err = state.CSIVolumeClaim(2, id0, a1, w)
 	require.NoError(t, err)
 
 	ws = memdb.NewWatchSet()
@@ -2909,7 +2911,7 @@ func TestStateStore_CSIVolume(t *testing.T) {
 	vs = slurp(iter)
 	require.False(t, vs[0].CanWrite())
 
-	err = state.CSIVolumeClaim(2, "DEADBEEF-70AD-4672-9178-802BCA500C87", a0, u)
+	err = state.CSIVolumeClaim(2, id0, a0, u)
 	require.NoError(t, err)
 	ws = memdb.NewWatchSet()
 	iter, err = state.CSIVolumesByDriver(ws, "minnie")
